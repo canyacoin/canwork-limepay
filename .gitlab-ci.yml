@@ -9,7 +9,6 @@ before_script:
 
 deploy:staging:
   stage: deploy
-  when: automatic
   script:
     - echo "Deploy to staging target GAE instance with project ID $STAGING_GCP_PROJECT_ID"
     - echo $STAGING_GCP_KEY > /tmp/$CI_PIPELINE_ID.json
