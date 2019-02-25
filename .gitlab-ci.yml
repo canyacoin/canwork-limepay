@@ -1,0 +1,36 @@
+stages:
+  - deploy
+
+variables:
+  APP_PATH: /builds/$CI_PROJECT_PATH
+
+before_script:
+  - cd $APP_PATH
+
+deploy:staging:
+  stage: deploy
+  when: automatic
+  script:
+    - echo "Deploy to staging target GAE instance with project ID $STAGING_GCP_PROJECT_ID"
+    - echo $STAGING_GCP_KEY > /tmp/$CI_PIPELINE_ID.json
+    - echo $STAGING_CONFIG > ./config.json
+    - echo $STAGING_SIGNER_WALLET > ./signer-wallet.json
+    - gcloud auth activate-service-account --key-file /tmp/$CI_PIPELINE_ID.json
+    - gcloud config set project $STAGING_GCP_PROJECT_ID
+    - gcloud --quiet app deploy
+  only:
+    - master
+
+deploy:production:
+  stage: deploy
+  when: manual
+  script:
+    - echo "Deploy to staging target GAE instance with project ID $GCP_PROJECT_ID"
+    - echo $GCP_KEY > /tmp/$CI_PIPELINE_ID.json
+    - echo $CONFIG > ./config.json
+    - echo $SIGNER_WALLET > ./signer-wallet.json
+    - gcloud auth activate-service-account --key-file /tmp/$CI_PIPELINE_ID.json
+    - gcloud config set project $GCP_PROJECT_ID
+    - gcloud --quiet app deploy
+  only:
+    - master
