@@ -1,8 +1,9 @@
 'use strict';
-const express = require('express');
-const axios = require('axios');
-const ethers = require('ethers');
-const LimePaySDK = require('limepay');
+const express = require('express'),
+    axios = require('axios'),
+    ethers = require('ethers'),
+    cors = require('cors'),
+    LimePaySDK = require('limepay');
 let LimePay;
 
 
@@ -21,6 +22,9 @@ const signerWalletConfig = {
 /* --------- EXPRESS SETUP ------------ */
 const app = express();
 app.use(express.json())
+app.use(cors({
+    origin: ['http://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
+}))
 app.use((err, request, response, next) => {
     console.log(err);
     response.status(500).send(err);
@@ -28,7 +32,7 @@ app.use((err, request, response, next) => {
 
 // Basic health check
 app.get('/', (req, res) => {
-  res
+    res
     .status(200)
     .send('Hello, world!')
     .end();
@@ -51,7 +55,7 @@ app.post('/createWallet', async (request, response, next) => {
 // Params: shopperId
 app.get('/getWallet', async (request, response, next) => {
     try {
-        console.log(req.query.shopperId)
+        console.log(request.query.shopperId)
         //TODO - get wallet from SDK
         response.json({ wallet: sampleShopperWallet });
     } catch (error) {
@@ -72,7 +76,7 @@ app.post('/fiatPayment', async (request, response, next) => {
         console.log(request.body)
         //TODO - get the required params from request.body, or hook up to firebase and pass to getFiatData
 
-        // const fiatPaymentData = await getFiatData();
+        // const fiatPaymentData = await getJobCreationData();
         // const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig);
         // response.json({ token: createdPayment.limeToken });
     } catch (error) {
@@ -81,6 +85,8 @@ app.post('/fiatPayment', async (request, response, next) => {
 });
 
 
+
+/* ---------- EXPRESS INIT --------------*/
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, async () => {
     LimePay = await LimePaySDK.connect({
@@ -91,6 +97,10 @@ app.listen(PORT, async () => {
 
     console.log(`Sample app listening at http://localhost:` + PORT)
 });
+
+
+
+
 
 /* ----------------- UTILS / HELPERS -----------------*/
 
@@ -103,11 +113,11 @@ const getJobCreationData = async (jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, 
 
     let approveGasLimit = 55000
     let approveGasLimitBN = ethers.utils.bigNumberify(approveGasLimit);
-    let approveWeiAmount = gasPriceBN.mul(approveGasLimit)
+    let approveWeiAmount = gasPriceBN.mul(approveGasLimitBN)
 
     let jobGasLimit = 390000
     let jobGasLimitBN = ethers.utils.bigNumberify(jobGasLimit);
-    let jobWeiAmount = gasPriceBN.mul(jobGasLimit)
+    let jobWeiAmount = gasPriceBN.mul(jobGasLimitBN)
 
     let totalWeiAmount = jobWeiAmount.add(approveWeiAmount)
 
@@ -148,22 +158,22 @@ const getJobCreationData = async (jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, 
                 to: CONFIG.CANWORK_ADDRESS,
                 functionName: "createJob",
                 functionParams: [
-                  {
-                      type: 'bytes',
-                      value: jobIdHex
-                  },
-                  {
-                      type: 'address',
-                      value: shopperAddress,
-                  },
-                  {
-                      type: 'address',
-                      value: providerAddress,
-                  },
-                  {
-                      type: 'uint',
-                      value: jobPriceCan
-                  }
+                    {
+                        type: 'bytes',
+                        value: jobIdHex
+                    },
+                    {
+                        type: 'address',
+                        value: shopperAddress,
+                    },
+                    {
+                        type: 'address',
+                        value: providerAddress,
+                    },
+                    {
+                        type: 'uint',
+                        value: jobPriceCan
+                    }
                 ]
             }
         ]
