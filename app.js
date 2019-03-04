@@ -105,7 +105,7 @@ app.listen(PORT, async () => {
 /* ----------------- UTILS / HELPERS -----------------*/
 
 // Get the fiat payment object required for creating the job
-const getJobCreationData = async (jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
+const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
     jobPriceCan  = jobPriceCan * (10 ** 6)
 
     const gasPriceWei = await getGasPrice();
@@ -122,7 +122,7 @@ const getJobCreationData = async (jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, 
     let totalWeiAmount = jobWeiAmount.add(approveWeiAmount)
 
     return {
-        shopper: shopperAddress, 
+        shopper: shopperId, 
         currency: "USD",
         items: [
             {
