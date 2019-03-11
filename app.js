@@ -128,6 +128,58 @@ app.listen(PORT, async () => {
 // Get firestore
 const firestore = () => admin.firestore();
 
+const getJob = (jobId) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const db = firestore();
+            var jobRef = db.collection('jobs').doc(jobId);
+            jobRef.get().then(doc => {
+                if (!doc.exists) {
+                    reject('No such document!');
+                } else {
+                    resolve(doc.data());
+                }
+            })
+        } catch (e) {
+            reject(e);
+        }
+    }) 
+}
+
+
+const getShopper = (userId) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const db = firestore();
+            var shopperRef = db.collection('shoppers').doc(userId);
+            shopperRef.get().then(doc => {
+                if (!doc.exists) {
+                    reject('No such document!');
+                } else {
+                    resolve(doc.data());
+                }
+            })
+        } catch (e) {
+            reject(e);
+        }
+    }) 
+}
+
+const setShopper = (userId, shopper) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const db = firestore();
+            db.collection('shoppers').doc(userId).set(shopper, {merge: true}).then(res => {
+                resolve(res)
+            }).catch(e => {
+                reject(e)
+            });
+        } catch (e) {
+            reject(e);
+        }
+    }) 
+}
+
 // Get the fiat payment object required for creating the job
 const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
     jobPriceCan  = jobPriceCan * (10 ** 6)
