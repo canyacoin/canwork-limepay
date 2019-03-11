@@ -4,7 +4,8 @@ const express = require('express'),
     ethers = require('ethers'),
     cors = require('cors'),
     LimePaySDK = require('limepay'),
-    admin = require('firebase-admin');
+    admin = require('firebase-admin'),
+    firebaseMiddleware = require('express-firebase-middleware');
 let LimePay;
 
 /* --------- CONFIG------------ */
@@ -26,6 +27,7 @@ app.use(express.json())
 app.use(cors({
     origin: ['http://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
 }))
+app.use('/auth/', firebaseMiddleware.auth)
 app.use((err, request, response, next) => {
     console.log(err);
     response.status(500).send(err);
@@ -42,10 +44,23 @@ app.get('/', async (req, res) => {
     }
 });
 
+// Basic middleware check
+app.get('/auth/status', async (req, res) => {
+    try {
+        res.json({
+            message: `You're logged in as ${res.locals.user.email} with Firebase UID: ${res.locals.user.uid}`
+        });
+    } catch (e){
+        res.json({
+            message: `Not logged in`
+        });
+    }
+});
+
 /* --------- WALLET / SHOPPER MANAGEMENT ------------ */
 // Stub method for creating a shoppers wallet
 // Body { password: '<password to generate wallet>' }
-app.post('/createWallet', async (request, response, next) => {
+app.post('/auth/createWallet', async (request, response, next) => {
     try {
         console.log(request.body)
         //TODO - use limepay SDK to create and store the wallet object, then return it
@@ -57,7 +72,7 @@ app.post('/createWallet', async (request, response, next) => {
 
 // Stub method for getting shoppers wallet
 // Params: shopperId
-app.get('/getWallet', async (request, response, next) => {
+app.get('/auth/getWallet', async (request, response, next) => {
     try {
         console.log(request.query.shopperId)
         //TODO - get wallet from SDK

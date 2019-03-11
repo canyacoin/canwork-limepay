@@ -24,6 +24,7 @@
     "cors": "^2.8.5",
     "ethers": "^4.0.26",
     "express": "^4.16.3",
+    "express-firebase-middleware": "^2.0.0",
     "firebase-admin": "^7.0.0",
     "limepay": "^0.1.3"
   },
