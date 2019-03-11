@@ -16,6 +16,7 @@ deploy:staging:
     - echo $STAGING_GCP_KEY > /tmp/$CI_PIPELINE_ID.json
     - echo $STAGING_CONFIG > ./config.json
     - echo $STAGING_SIGNER_WALLET > ./signer-wallet.json
+    - echo $STAGING_FIREBASE_KEY > ./firebasekey.json
     - gcloud auth activate-service-account --key-file /tmp/$CI_PIPELINE_ID.json
     - gcloud config set project $STAGING_GCP_PROJECT_ID
     - gcloud --quiet app deploy
@@ -30,6 +31,7 @@ deploy:production:
     - echo $GCP_KEY > /tmp/$CI_PIPELINE_ID.json
     - echo $CONFIG > ./config.json
     - echo $SIGNER_WALLET > ./signer-wallet.json
+    - echo $FIREBASE_KEY > ./firebasekey.json
     - gcloud auth activate-service-account --key-file /tmp/$CI_PIPELINE_ID.json
     - gcloud config set project $GCP_PROJECT_ID
     - gcloud --quiet app deploy

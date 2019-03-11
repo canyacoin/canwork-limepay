@@ -1,3 +1,4 @@
 config*json
 signer-wallet.json
 node_modules
+firebasekey.json

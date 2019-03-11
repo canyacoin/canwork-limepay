@@ -3,14 +3,15 @@ const express = require('express'),
     axios = require('axios'),
     ethers = require('ethers'),
     cors = require('cors'),
-    LimePaySDK = require('limepay');
+    LimePaySDK = require('limepay'),
+    admin = require('firebase-admin');
 let LimePay;
-
 
 /* --------- CONFIG------------ */
 const signerWallet = require('./signer-wallet');
 const sampleShopperWallet = require('./sample-shopper-wallet'); // PASSWORD = sogfiuhsidoufhsdafofd
 const CONFIG = require('./config');
+const serviceAccount = require('./firebasekey.json');
 
 const signerWalletConfig = {
     encryptedWallet: {
@@ -30,12 +31,15 @@ app.use((err, request, response, next) => {
     response.status(500).send(err);
 });
 
-// Basic health check
-app.get('/', (req, res) => {
-    res
-    .status(200)
-    .send('Hello, world!')
-    .end();
+// Basic firestore connection check
+app.get('/', async (req, res) => {
+    try {
+        const col = await firestore().listCollections();
+        res.status(200).send(`connected:${col.length > 0}`).end();
+    } catch (e){
+        console.log(e)
+        res.status(500).send(JSON.stringify(e)).end();
+    }
 });
 
 /* --------- WALLET / SHOPPER MANAGEMENT ------------ */
@@ -94,7 +98,9 @@ app.listen(PORT, async () => {
         apiKey: CONFIG.API_KEY,
         secret: CONFIG.API_SECRET
     });
-
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
     console.log(`Sample app listening at http://localhost:` + PORT)
 });
 
@@ -103,6 +109,9 @@ app.listen(PORT, async () => {
 
 
 /* ----------------- UTILS / HELPERS -----------------*/
+
+// Get firestore
+const firestore = () => admin.firestore();
 
 // Get the fiat payment object required for creating the job
 const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
