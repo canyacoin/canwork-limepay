@@ -13,6 +13,8 @@ const signerWallet = require('./signer-wallet');
 const sampleShopperWallet = require('./sample-shopper-wallet'); // PASSWORD = sogfiuhsidoufhsdafofd
 const CONFIG = require('./config');
 const serviceAccount = require('./firebasekey.json');
+const abi_canwork = require('./abi/canwork.json');
+const abi_canyacoin = require('./abi/canyacoin.json');
 
 const signerWalletConfig = {
     encryptedWallet: {
@@ -94,12 +96,31 @@ app.post('/fiatPayment', async (request, response, next) => {
     try {
         console.log(request.body)
         //TODO - get the required params from request.body, or hook up to firebase and pass to getFiatData
-
+        //TODO - set clientEthAddress, providerEthAddress, budgetCan
         // const fiatPaymentData = await getJobCreationData();
         // const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig);
         // response.json({ token: createdPayment.limeToken });
     } catch (error) {
         next(error);
+    }
+});
+
+
+/* --------- GETTERS ------------ */
+// Gets the transactions required for the enter escrow 
+// @param jobId = job ID
+app.get('/auth/enter-escrow-tx', async (req, res) => {
+    try {
+        const jobId = req.param('jobId')
+        const shopper = await getShopper(res.locals.user.uid);
+        const job = await getJob(jobId);
+        const fiatPaymentData = await getJobCreationData(shopper.id, job.information.title, job.budget, job.budgetCan, 
+            job.hexId, shopper.address, job.providerEthAddress);
+        res.json(fiatPaymentData.genericTransactions);
+    } catch (e){
+        res.json({
+            message: `Not logged in`
+        });
     }
 });
 
@@ -182,7 +203,8 @@ const setShopper = (userId, shopper) => {
 
 // Get the fiat payment object required for creating the job
 const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
-    jobPriceCan  = jobPriceCan * (10 ** 6)
+    console.log('Job creation params: ', {shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress})
+    jobPriceCan  = jobPriceCan * (10 ** 6);
 
     const gasPriceWei = await getGasPrice();
     let gasPriceBN = ethers.utils.bigNumberify(gasPriceWei);
@@ -216,6 +238,8 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 gasPrice: gasPriceWei,
                 gasLimit: approveGasLimit,
                 to: CONFIG.CANYACOIN_ADDRESS,
+                abi: abi_canyacoin,
+                value: 0,
                 functionName: "approve",
                 functionParams: [
                     {
@@ -232,6 +256,8 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 gasPrice: gasPriceWei,
                 gasLimit: jobGasLimit,
                 to: CONFIG.CANWORK_ADDRESS,
+                abi: abi_canwork,
+                value: 0,
                 functionName: "createJob",
                 functionParams: [
                     {
