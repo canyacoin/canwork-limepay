@@ -23,6 +23,7 @@ const signerWalletConfig = {
     }
 }
 
+
 /* --------- EXPRESS SETUP ------------ */
 const app = express()
 app.use(express.json())
@@ -31,7 +32,7 @@ app.use(cors({
 }))
 app.use('/auth/', firebaseMiddleware.auth)
 app.use((err, req, res, next) => {
-    console.log(err)
+    console.log('ERR: ', JSON.stringify(err), err)
     res.status(500).send(err)
 })
 
@@ -98,11 +99,7 @@ app.post('/auth/createShopper', async (req, res, next) => {
 app.get('/auth/getShopper', async (req, res, next) => {
     try {
         const shopper = await getShopper(res.locals.user.uid)
-        if (shopper) {
-            res.json(shopper)
-        } else {
-            res.json(null)
-        }
+        res.json(shopper)
     } catch (error) {
         next(error)
     }
@@ -114,7 +111,9 @@ app.get('/auth/getShopper', async (req, res, next) => {
 app.get('/auth/getWalletToken', async (req, res, next) => {
     try {
         const shopper = await getShopper(res.locals.user.uid)
-        const token = LimePay.shoppers.getWalletToken(shopper._id) // returns new Promise<>
+        console.log('getWalletToken: ', shopper)
+        const token = await LimePay.shoppers.getWalletToken(shopper.shopperId) // returns new Promise<>
+        console.log('getWalletToken: ', token)
         res.json(token)
     } catch (error) {
         next(error)
@@ -125,7 +124,7 @@ app.get('/auth/getWalletToken', async (req, res, next) => {
 /* ---------- PAYMENT --------------*/
 // Create and sign the fiat payment to create a job
 // body: jobId / providerEthAddress
-app.post('/auth/fiatPayment', async (req, res, next) => {
+app.post('/auth/initFiatPayment', async (req, res, next) => {
     try {
         const jobId = req.body.jobId
         const providerEthAddress = req.body.providerEthAddress
@@ -137,14 +136,15 @@ app.post('/auth/fiatPayment', async (req, res, next) => {
             const jobValueCan = await getExchangeRate('DAI', job.budget)
             const jobUpdated = await setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
             console.log('Job updated: ', jobUpdated)
-            const fiatPaymentData = await getJobCreationData(shopper._id, job.information.title, job.budget, jobValueCan, 
+            const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, jobValueCan, 
                 job.hexId, shopper.address, providerEthAddress)
             console.log('Job creation data: ', fiatPaymentData)
             const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
-            res.json({ token: createdPayment.limeToken })
+            res.json({ transactions: fiatPaymentData.genericTransactions, token: createdPayment.limeToken })
         }        
     } catch (error) {
+        console.log('ERR: ', JSON.stringify(error), error)
         next(error)
     }
 })
@@ -159,7 +159,7 @@ app.get('/auth/enter-escrow-tx', async (req, res) => {
         const jobId = req.param('jobId')
         const shopper = await getShopper(res.locals.user.uid)
         const job = await getJob(jobId)
-        const fiatPaymentData = await getJobCreationData(shopper._id, job.information.title, job.budget, job.budgetCan, 
+        const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
             job.hexId, shopper.walletAddress, job.providerEthAddress)
         res.json(fiatPaymentData.genericTransactions)
     } catch (e){
@@ -261,19 +261,18 @@ const setJob = (job) => {
 
 // Get the shopper object from firestore
 const getShopper = (userId) => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         try {
             const db = firestore()
             var shopperRef = db.collection('shoppers').doc(userId)
-            shopperRef.get().then(doc => {
-                if (!doc.exists) {
-                    reject('No such document!')
-                } else {
-                    const shopperId = doc.data().shopperId
-                    const shopper = await LimePay.shoppers.get(shopperId)
-                    resolve({ ...shopper, shopperId })
-                }
-            })
+            const doc = await shopperRef.get();
+            if (!doc.exists) {
+                resolve(null)
+            } else {
+                const shopperId = doc.data().shopperId
+                const shopper = await LimePay.shoppers.get(shopperId)
+                resolve({ ...shopper, shopperId })
+            }
         } catch (e) {
             reject(e)
         }
@@ -332,7 +331,6 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 gasLimit: approveGasLimit,
                 to: CONFIG.CANYACOIN_ADDRESS,
                 abi: abi_canyacoin,
-                value: 0,
                 functionName: "approve",
                 functionParams: [{
                         type: 'address',
@@ -349,7 +347,6 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 gasLimit: jobGasLimit,
                 to: CONFIG.CANWORK_ADDRESS,
                 abi: abi_canwork,
-                value: 0,
                 functionName: "createJob",
                 functionParams: [{
                         type: 'bytes',
