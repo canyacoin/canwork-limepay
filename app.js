@@ -30,9 +30,9 @@ app.use(cors({
     origin: ['http://localhost:4200', 'https://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
 }))
 app.use('/auth/', firebaseMiddleware.auth)
-app.use((err, request, response, next) => {
+app.use((err, req, res, next) => {
     console.log(err)
-    response.status(500).send(err)
+    res.status(500).send(err)
 })
 
 // Basic firestore connection check
@@ -59,99 +59,67 @@ app.get('/auth/status', async (req, res) => {
     }
 })
 
-/* --------- WALLET / SHOPPER MANAGEMENT ------------ */
-// Stub method for creating a shoppers wallet
-// Body { password: '<password to generate wallet>' }
-app.post('/auth/createWallet', async (request, response, next) => {
-    try {
-        console.log(request.body)
-        //TODO - use limepay SDK to create and store the wallet object, then return it
-        response.json({
-            wallet: sampleShopperWallet
-        });
-    } catch (error) {
-        next(error)
-    }
-})
-
-// Stub method for getting shoppers wallet
-// Params: shopperId
-app.get('/auth/getWallet', async (request, response, next) => {
-    try {
-        console.log(request.query.shopperId)
-        //TODO - get wallet from SDK
-        response.json({
-            wallet: sampleShopperWallet
-        });
-    } catch (error) {
-        next(error)
-    }
-
-})
-
-// Method to check whether or not a user is already in the shopper collection
-app.post('/isShopper', async (request, response, next) => {
-    try {
-        console.log(request.query.shopperId)
-        const shopper = await getShopper(request.body.userId);
-        if (shopper !== null) {
-            response.json({
-                isShopper: true
-            });
-        } else {
-            response.json({
-                isShopper: false
-            });
-        }
-    } catch (error) {
-        next(error)
-    }
-});
-
-
-//TODO - getShopper (https://github.com/LimePay/docs/blob/latest/3.%20JS-SDK-documentation.md#21-getting-shopper)
-
-
-//TODO - createShopper (https://github.com/LimePay/docs/blob/latest/3.%20JS-SDK-documentation.md#23-creating-shopper)
 
 /* ---------- SHOPPER --------------*/
-// Create the shopper. params : 
-app.post('/createShopper', async (request, response, next) => {
+// Create the shopper
+app.post('/auth/createShopper', async (req, res, next) => {
     try {
-        console.log(request.body)
-        //TODO - get the required params from request.body, or hook up to firebase and pass to getFiatData
-        const user = await getUser(request.body.userId);
+        const user = await getUser(res.locals.user.uid)
         var fullName = user.name.split(' '),
             shopperFirstName = fullName[0],
-            shopperLastName = fullName[fullName.length - 1];
+            shopperLastName = fullName[fullName.length - 1]
         var shopperData = {
             firstName: shopperFirstName,
             lastName: shopperLastName,
             email: user.email,
             useLimePayWallet: true
         }
-        console.log('creating shopper...');
-        LimePay.shoppers.create(shopperData).then(shopper => { 
+        console.log('creating shopper...')
+        LimePay.shoppers.create(shopperData).then(async (shopper) => { 
             if(shopper) {
-                const set = setShopper(request.body.userId, shopperData);  
-                response.status(200).send(shopper).end();
+                await setShopper(res.locals.user.uid, { shopperId: shopper._id })  
+                res.json(shopper)
             } else {
-                console.log('something is wrong...');
-                response.status(500).send('error. shopper null').end();
+                console.log('something is wrong...')
+                next('error. shopper null')
             }
-
         }).catch(error => {
-            console.log('something is gravely wrong.');
+            console.log('something is gravely wrong.')
             console.log(error)
-            response.status(500).send(JSON.stringify(error)).end();
-        });
-
+            next(error)
+        })
     } catch (error) {
-        next(error);
+        next(error)
     }
-});
+})
 
 
+// Method to check whether or not a user is already in the shopper collection
+app.get('/auth/getShopper', async (req, res, next) => {
+    try {
+        const shopper = await getShopper(res.locals.user.uid)
+        if (shopper) {
+            res.json(shopper)
+        } else {
+            res.json(null)
+        }
+    } catch (error) {
+        next(error)
+    }
+})
+
+
+/* --------- WALLET / SHOPPER MANAGEMENT ------------ */
+// Stub method for getting shoppers wallet
+app.get('/auth/getWalletToken', async (req, res, next) => {
+    try {
+        const shopper = await getShopper(res.locals.user.uid)
+        const token = LimePay.shoppers.getWalletToken(shopper._id) // returns new Promise<>
+        res.json(token)
+    } catch (error) {
+        next(error)
+    }
+})
 
 
 /* ---------- PAYMENT --------------*/
@@ -167,20 +135,19 @@ app.post('/auth/fiatPayment', async (req, res, next) => {
             const job = await getJob(jobId)
             const shopper = await getShopper(userId)
             const jobValueCan = await getExchangeRate('DAI', job.budget)
-            const jobUpdated = await setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.address, providerEthAddress: providerEthAddress})
+            const jobUpdated = await setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
             console.log('Job updated: ', jobUpdated)
-            const fiatPaymentData = await getJobCreationData(shopper.id, job.information.title, job.budget, jobValueCan, 
+            const fiatPaymentData = await getJobCreationData(shopper._id, job.information.title, job.budget, jobValueCan, 
                 job.hexId, shopper.address, providerEthAddress)
             console.log('Job creation data: ', fiatPaymentData)
             const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
-            response.json({ token: createdPayment.limeToken })
+            res.json({ token: createdPayment.limeToken })
         }        
     } catch (error) {
         next(error)
     }
 })
-
 
 
 
@@ -192,8 +159,8 @@ app.get('/auth/enter-escrow-tx', async (req, res) => {
         const jobId = req.param('jobId')
         const shopper = await getShopper(res.locals.user.uid)
         const job = await getJob(jobId)
-        const fiatPaymentData = await getJobCreationData(shopper.id, job.information.title, job.budget, job.budgetCan, 
-            job.hexId, shopper.address, job.providerEthAddress)
+        const fiatPaymentData = await getJobCreationData(shopper._id, job.information.title, job.budget, job.budgetCan, 
+            job.hexId, shopper.walletAddress, job.providerEthAddress)
         res.json(fiatPaymentData.genericTransactions)
     } catch (e){
         res.json({
@@ -258,20 +225,20 @@ const getJob = (jobId) => {
 }
 
 const getUser = (userId) => {
-    console.log(userId);
+    console.log(userId)
     return new Promise((resolve, reject) => {
         try {
-            const db = firestore();
-            var userRef = db.collection('users').doc(userId);
+            const db = firestore()
+            var userRef = db.collection('users').doc(userId)
             userRef.get().then(doc => {
                 if (!doc.exists) {
-                    reject('No such document!');
+                    reject('No such document!')
                 } else {
-                    resolve(doc.data());
+                    resolve(doc.data())
                 }
             })
         } catch (e) {
-            reject(e);
+            reject(e)
         }
     })
 }
@@ -302,7 +269,9 @@ const getShopper = (userId) => {
                 if (!doc.exists) {
                     reject('No such document!')
                 } else {
-                    resolve(doc.data())
+                    const shopperId = doc.data().shopperId
+                    const shopper = await LimePay.shoppers.get(shopperId)
+                    resolve({ ...shopper, shopperId })
                 }
             })
         } catch (e) {
@@ -315,7 +284,7 @@ const getShopper = (userId) => {
 const setShopper = (userId, shopper) => {
     return new Promise((resolve, reject) => {
         try {
-            const db = firestore();
+            const db = firestore()
             db.collection('shoppers').doc(userId).set(shopper, {
                 merge: true
             }).then(res => {
