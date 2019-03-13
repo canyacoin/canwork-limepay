@@ -27,7 +27,7 @@ const signerWalletConfig = {
 const app = express()
 app.use(express.json())
 app.use(cors({
-    origin: ['http://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
+    origin: ['http://localhost:4200', 'https://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
 }))
 app.use('/auth/', firebaseMiddleware.auth)
 app.use((err, request, response, next) => {
@@ -66,7 +66,9 @@ app.post('/auth/createWallet', async (request, response, next) => {
     try {
         console.log(request.body)
         //TODO - use limepay SDK to create and store the wallet object, then return it
-        response.json({ wallet: sampleShopperWallet })
+        response.json({
+            wallet: sampleShopperWallet
+        });
     } catch (error) {
         next(error)
     }
@@ -78,16 +80,78 @@ app.get('/auth/getWallet', async (request, response, next) => {
     try {
         console.log(request.query.shopperId)
         //TODO - get wallet from SDK
-        response.json({ wallet: sampleShopperWallet })
+        response.json({
+            wallet: sampleShopperWallet
+        });
     } catch (error) {
         next(error)
     }
 
 })
 
+// Method to check whether or not a user is already in the shopper collection
+app.post('/isShopper', async (request, response, next) => {
+    try {
+        console.log(request.query.shopperId)
+        const shopper = await getShopper(request.body.userId);
+        if (shopper !== null) {
+            response.json({
+                isShopper: true
+            });
+        } else {
+            response.json({
+                isShopper: false
+            });
+        }
+    } catch (error) {
+        next(error)
+    }
+});
+
+
 //TODO - getShopper (https://github.com/LimePay/docs/blob/latest/3.%20JS-SDK-documentation.md#21-getting-shopper)
 
+
 //TODO - createShopper (https://github.com/LimePay/docs/blob/latest/3.%20JS-SDK-documentation.md#23-creating-shopper)
+
+/* ---------- SHOPPER --------------*/
+// Create the shopper. params : 
+app.post('/createShopper', async (request, response, next) => {
+    try {
+        console.log(request.body)
+        //TODO - get the required params from request.body, or hook up to firebase and pass to getFiatData
+        const user = await getUser(request.body.userId);
+        var fullName = user.name.split(' '),
+            shopperFirstName = fullName[0],
+            shopperLastName = fullName[fullName.length - 1];
+        var shopperData = {
+            firstName: shopperFirstName,
+            lastName: shopperLastName,
+            email: user.email,
+            useLimePayWallet: true
+        }
+        console.log('creating shopper...');
+        LimePay.shoppers.create(shopperData).then(shopper => { 
+            if(shopper) {
+                const set = setShopper(request.body.userId, shopperData);  
+                response.status(200).send(shopper).end();
+            } else {
+                console.log('something is wrong...');
+                response.status(500).send('error. shopper null').end();
+            }
+
+        }).catch(error => {
+            console.log('something is gravely wrong.');
+            console.log(error)
+            response.status(500).send(JSON.stringify(error)).end();
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+
 
 
 /* ---------- PAYMENT --------------*/
@@ -190,7 +254,26 @@ const getJob = (jobId) => {
         } catch (e) {
             reject(e)
         }
-    }) 
+    })
+}
+
+const getUser = (userId) => {
+    console.log(userId);
+    return new Promise((resolve, reject) => {
+        try {
+            const db = firestore();
+            var userRef = db.collection('users').doc(userId);
+            userRef.get().then(doc => {
+                if (!doc.exists) {
+                    reject('No such document!');
+                } else {
+                    resolve(doc.data());
+                }
+            })
+        } catch (e) {
+            reject(e);
+        }
+    })
 }
 
 // Set the job object in firestore
@@ -225,15 +308,17 @@ const getShopper = (userId) => {
         } catch (e) {
             reject(e)
         }
-    }) 
+    })
 }
 
 // Set the job object in firestore
 const setShopper = (userId, shopper) => {
     return new Promise((resolve, reject) => {
         try {
-            const db = firestore()
-            db.collection('shoppers').doc(userId).set(shopper, {merge: true}).then(res => {
+            const db = firestore();
+            db.collection('shoppers').doc(userId).set(shopper, {
+                merge: true
+            }).then(res => {
                 resolve(res)
             }).catch(e => {
                 reject(e)
@@ -241,13 +326,12 @@ const setShopper = (userId, shopper) => {
         } catch (e) {
             reject(e)
         }
-    }) 
+    })
 }
 
 // Get the fiat payment object required for creating the job
 const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
-    console.log('Job creation params: ', {shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress})
-    jobPriceCan  = jobPriceCan * (10 ** 6)
+    jobPriceCan = jobPriceCan * (10 ** 6)
 
     const gasPriceWei = await getGasPrice()
     let gasPriceBN = ethers.utils.bigNumberify(gasPriceWei)
@@ -263,29 +347,25 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
     let totalWeiAmount = jobWeiAmount.add(approveWeiAmount)
 
     return {
-        shopper: shopperId, 
+        shopper: shopperId,
         currency: "USD",
-        items: [
-            {
-                description: jobTitle,
-                lineAmount: jobPriceUsd,
-                quantity: 1
-            }
-        ],
+        items: [{
+            description: jobTitle,
+            lineAmount: jobPriceUsd,
+            quantity: 1
+        }],
         fundTxData: {
             tokenAmount: jobPriceCan,
             weiAmount: totalWeiAmount
         },
-        genericTransactions: [
-            {
+        genericTransactions: [{
                 gasPrice: gasPriceWei,
                 gasLimit: approveGasLimit,
                 to: CONFIG.CANYACOIN_ADDRESS,
                 abi: abi_canyacoin,
                 value: 0,
                 functionName: "approve",
-                functionParams: [
-                    {
+                functionParams: [{
                         type: 'address',
                         value: CONFIG.CANWORK_ADDRESS,
                     },
@@ -302,8 +382,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 abi: abi_canwork,
                 value: 0,
                 functionName: "createJob",
-                functionParams: [
-                    {
+                functionParams: [{
                         type: 'bytes',
                         value: jobIdHex
                     },
