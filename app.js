@@ -79,13 +79,11 @@ app.post('/auth/createShopper', async (req, res, next) => {
         LimePay.shoppers.create(shopperData).then(async (shopper) => { 
             if(shopper) {
                 await setShopper(res.locals.user.uid, { shopperId: shopper._id })  
-                res.json(shopper)
+                res.json({...shopper, shopperId: shopper._id})
             } else {
-                console.log('something is wrong...')
                 next('error. shopper null')
             }
         }).catch(error => {
-            console.log('something is gravely wrong.')
             console.log(error)
             next(error)
         })
@@ -137,11 +135,11 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
             const jobUpdated = await setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
             console.log('Job updated: ', jobUpdated)
             const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, jobValueCan, 
-                job.hexId, shopper.address, providerEthAddress)
+                job.hexId, shopper.walletAddress, providerEthAddress)
             console.log('Job creation data: ', fiatPaymentData)
             const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
-            res.json({ transactions: fiatPaymentData.genericTransactions, token: createdPayment.limeToken })
+            res.json({ transactions: fiatPaymentData.genericTransactions, paymentToken: createdPayment.limeToken })
         }        
     } catch (error) {
         console.log('ERR: ', JSON.stringify(error), error)
@@ -299,6 +297,7 @@ const setShopper = (userId, shopper) => {
 
 // Get the fiat payment object required for creating the job
 const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
+    console.log('Params:', shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress)
     jobPriceCan = jobPriceCan * (10 ** 6)
 
     const gasPriceWei = await getGasPrice()
@@ -312,7 +311,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
     let jobGasLimitBN = ethers.utils.bigNumberify(jobGasLimit)
     let jobWeiAmount = gasPriceBN.mul(jobGasLimitBN)
 
-    let totalWeiAmount = jobWeiAmount.add(approveWeiAmount)
+    let totalWeiAmount = jobWeiAmount.add(approveWeiAmount).toString()
 
     return {
         shopper: shopperId,
