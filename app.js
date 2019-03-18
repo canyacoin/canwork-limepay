@@ -139,7 +139,9 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
             console.log('Job creation data: ', fiatPaymentData)
             const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
-            res.json({ transactions: fiatPaymentData.genericTransactions, paymentToken: createdPayment.limeToken })
+            const clientTx = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
+                job.hexId, shopper.walletAddress, job.providerEthAddress, true)
+            res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken })
         }        
     } catch (error) {
         console.log('ERR: ', JSON.stringify(error), error)
@@ -158,7 +160,7 @@ app.get('/auth/enter-escrow-tx', async (req, res) => {
         const shopper = await getShopper(res.locals.user.uid)
         const job = await getJob(jobId)
         const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
-            job.hexId, shopper.walletAddress, job.providerEthAddress)
+            job.hexId, shopper.walletAddress, job.providerEthAddress, true)
         res.json(fiatPaymentData.genericTransactions)
     } catch (e){
         res.json({
@@ -296,10 +298,10 @@ const setShopper = (userId, shopper) => {
 }
 
 // Get the fiat payment object required for creating the job
-const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress) => {
+const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress, forClient = false) => {
     console.log('Params:', shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress)
     jobPriceCan = jobPriceCan * (10 ** 6)
-
+    jobIdHex = rightPad(jobIdHex, 64)
     const gasPriceWei = await getGasPrice()
     let gasPriceBN = ethers.utils.bigNumberify(gasPriceWei)
 
@@ -331,7 +333,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 to: CONFIG.CANYACOIN_ADDRESS,
                 abi: abi_canyacoin,
                 functionName: "approve",
-                functionParams: [{
+                functionParams: forClient ? [CONFIG.CANWORK_ADDRESS, jobPriceCan] : [{
                         type: 'address',
                         value: CONFIG.CANWORK_ADDRESS,
                     },
@@ -347,7 +349,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 to: CONFIG.CANWORK_ADDRESS,
                 abi: abi_canwork,
                 functionName: "createJob",
-                functionParams: [{
+                functionParams: forClient ? [jobIdHex, shopperAddress, providerAddress, jobPriceCan] : [{
                         type: 'bytes',
                         value: jobIdHex
                     },
@@ -368,6 +370,24 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
         ]
     }
 }
+
+/**
+ * Should be called to pad string to expected length
+ *
+ * @method rightPad
+ * @param {String} string to be padded
+ * @param {Number} chars that result string should have
+ * @param {String} sign, by default 0
+ * @returns {String} right aligned string
+ */
+var rightPad = function (string, chars, sign) {
+    var hasPrefix = /^0x/i.test(string) || typeof string === 'number';
+    string = string.toString(16).replace(/^0x/i,'');
+
+    var padding = (chars - string.length + 1 >= 0) ? chars - string.length + 1 : 0;
+
+    return (hasPrefix ? '0x' : '') + string + (new Array(padding).join(sign ? sign : "0"));
+};
 
 
 
