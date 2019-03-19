@@ -8,14 +8,23 @@ const express = require('express'),
     firebaseMiddleware = require('express-firebase-middleware')
 let LimePay
 
-/* --------- CONFIG------------ */
-const signerWallet = require('./signer-wallet')
+/**
+ * @summary Development config (( Not for Prod ))
+ */
 const sampleShopperWallet = require('./sample-shopper-wallet') // PASSWORD = sogfiuhsidoufhsdafofd
+
+/**
+ * @summary Config
+ */
 const CONFIG = require('./config')
 const serviceAccount = require('./firebasekey.json')
+
+/**
+ * @summary Global variables
+ */
+const signerWallet = require('./signer-wallet')
 const abi_canwork = require('./abi/canwork.json')
 const abi_canyacoin = require('./abi/canyacoin.json')
-
 const signerWalletConfig = {
     encryptedWallet: {
         jsonWallet: JSON.stringify(signerWallet),
@@ -23,8 +32,11 @@ const signerWalletConfig = {
     }
 }
 
-
-/* --------- EXPRESS SETUP ------------ */
+/**
+ * @summary Express configuration and setup
+ * @description Sets express.js server with middleware for cors, 
+ *  firebase JWT authentication and error handling
+ */
 const app = express()
 app.use(express.json())
 app.use(cors({
@@ -36,7 +48,11 @@ app.use((err, req, res, next) => {
     res.status(500).send(err)
 })
 
-// Basic firestore connection check
+/**
+ * @name / - Firestore connection checker
+ * @summary Checks connection to firestore by reading collections and returning length 
+ * @returns 200 on connection, 500 on error
+ */
 app.get('/', async (req, res) => {
     try {
         const col = await firestore().listCollections()
@@ -47,7 +63,11 @@ app.get('/', async (req, res) => {
     }
 })
 
-// Basic middleware check
+/**
+ * @name Status - Firebase authentication check
+ * @summary Checks if the request is verified via firebaseMiddleWare
+ * @returns Message containing user id and email if available
+ */
 app.get('/auth/status', async (req, res) => {
     try {
         res.json({
@@ -61,8 +81,15 @@ app.get('/auth/status', async (req, res) => {
 })
 
 
-/* ---------- SHOPPER --------------*/
-// Create the shopper
+/* ---------- SHOPPER MANAGEMENT --------------*/
+
+/**
+ * @name CreateShopper
+ * @summary Pulls user information from firestore and creates 
+ *  a Limepay shopper object. Shopper ID is then saved to firestore
+ * @requires Firebase middleware authentication 
+ * @returns Shopper object from limepay, or an error
+ */
 app.post('/auth/createShopper', async (req, res, next) => {
     try {
         const user = await getUser(res.locals.user.uid)
@@ -92,8 +119,12 @@ app.post('/auth/createShopper', async (req, res, next) => {
     }
 })
 
-
-// Method to check whether or not a user is already in the shopper collection
+/**
+ * @name GetShopper
+ * @summary Method to retrieve shopper data from Limepay
+ * @requires Firebase middleware authentication 
+ * @returns Shopper object, or null if it doesn't exist
+ */
 app.get('/auth/getShopper', async (req, res, next) => {
     try {
         const shopper = await getShopper(res.locals.user.uid)
@@ -104,8 +135,15 @@ app.get('/auth/getShopper', async (req, res, next) => {
 })
 
 
-/* --------- WALLET / SHOPPER MANAGEMENT ------------ */
-// Stub method for getting shoppers wallet
+/* --------- WALLET MANAGEMENT ------------ */
+
+/**
+ * @name GetWalletToken
+ * @summary Method to retrieve wallet token for a specific user. This 
+ *  token is used to retrieve/create the wallet object on the client (LimePay-Web)
+ * @requires Firebase middleware authentication
+ * @returns Wallet token for the shopper
+ */
 app.get('/auth/getWalletToken', async (req, res, next) => {
     try {
         const shopper = await getShopper(res.locals.user.uid)
@@ -120,8 +158,17 @@ app.get('/auth/getWalletToken', async (req, res, next) => {
 
 
 /* ---------- PAYMENT --------------*/
-// Create and sign the fiat payment to create a job
-// body: jobId / providerEthAddress
+
+/**
+ * @name InitFiatPayment
+ * @summary Create and sign the fiat payment to create a job
+ * @description Initialises the fiat payment required to enter the canwork escrow. 
+ *  Retrieves all the objects needed to get the job creation data ( sent to limepay ).
+ *  Sets IMPORTANT properties on the job object (budgetCan, client/provider eth address) 
+ * @requires Firebase middleware authentication
+ *  body: jobId / providerEthAddress
+ * @returns Payment token && Transactions that will need to be signed by the shopper
+ */
 app.post('/auth/initFiatPayment', async (req, res, next) => {
     try {
         const jobId = req.body.jobId
@@ -152,8 +199,14 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
 
 
 /* --------- GETTERS ------------ */
-// Gets the transactions required for the enter escrow 
-// @param jobId = job ID
+
+/**
+ * @name Enter-Escrow-Tx
+ * @summary Gets the transactions required for the enter escrow 
+ * @requires Firebase middleware authentication
+ * @param jobId
+ * @returns Transactions that will need to be signed by the shopper
+ */
 app.get('/auth/enter-escrow-tx', async (req, res) => {
     try {
         const jobId = req.param('jobId')
@@ -172,6 +225,11 @@ app.get('/auth/enter-escrow-tx', async (req, res) => {
 
 
 /* ---------- EXPRESS INIT --------------*/
+
+/**
+ * @summary Starts the express application
+ * @description Sets up express.js and app constants - Limepay && firestore
+ */
 const PORT = process.env.PORT || 8080
 app.listen(PORT, async () => {
     LimePay = await LimePaySDK.connect({
@@ -191,10 +249,19 @@ app.listen(PORT, async () => {
 
 /* ----------------- UTILS / HELPERS -----------------*/
 
-// Get firestore
+/**
+ * @function @name firestore
+ * @returns Admin firestore used to read and write data
+ */
 const firestore = () => admin.firestore()
 
-// Calculates the conversion between DAI & CAN
+/**
+ * @function @name getExchangeRate
+ * @summary Hits our GETH connected microservice to retrieve the current price rate for DAI -> CAN
+ * @param fromCur ('DAI' || 'CAN')
+ * @param amount (amount WITHOUT decimals)
+ * @returns The converted value
+ */
 const getExchangeRate = async (fromCur, amount) => {
     try {
         var value = await axios.get(`${CONFIG.ORACLE_URL}?currency=${fromCur}&amount=${amount}`)
@@ -205,7 +272,11 @@ const getExchangeRate = async (fromCur, amount) => {
     }
 }
 
-// Get the job object from firestore
+/**
+ * @function @name getJob
+ * @summary Get job from firestore based on ID
+ * @param jobId -- string
+ */
 const getJob = (jobId) => {
     return new Promise((resolve, reject) => {
         try {
@@ -224,6 +295,31 @@ const getJob = (jobId) => {
     })
 }
 
+/**
+ * @function @name setJob
+ * @summary Update the job object in firestore
+ * @param job -- updated job object
+ */
+const setJob = (job) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const db = firestore()
+            db.collection('jobs').doc(job.id).set(job, {merge: true}).then(res => {
+                resolve(res)
+            }).catch(e => {
+                reject(e)
+            })
+        } catch (e) {
+            reject(e)
+        }
+    }) 
+}
+
+/**
+ * @function @name getUser
+ * @summary Get user from firestore based on ID
+ * @param userId -- string
+ */
 const getUser = (userId) => {
     console.log(userId)
     return new Promise((resolve, reject) => {
@@ -243,23 +339,12 @@ const getUser = (userId) => {
     })
 }
 
-// Set the job object in firestore
-const setJob = (job) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = firestore()
-            db.collection('jobs').doc(job.id).set(job, {merge: true}).then(res => {
-                resolve(res)
-            }).catch(e => {
-                reject(e)
-            })
-        } catch (e) {
-            reject(e)
-        }
-    }) 
-}
-
-// Get the shopper object from firestore
+/**
+ * @function @name getShopper
+ * @summary Gets the Limepay shopper object using the specified userId
+ * @param userId -- string
+ * @returns ShopperID ++ limepay shopper object
+ */
 const getShopper = (userId) => {
     return new Promise(async (resolve, reject) => {
         try {
@@ -279,7 +364,12 @@ const getShopper = (userId) => {
     })
 }
 
-// Set the job object in firestore
+/**
+ * @function @name SetShopper
+ * @summary Sets the limepay shopper ID in firestore so we know who has an existing acc
+ * @param {String} userId -- string
+ * @param {object} shopper -- object ((shopperId))
+ */
 const setShopper = (userId, shopper) => {
     return new Promise((resolve, reject) => {
         try {
@@ -296,8 +386,19 @@ const setShopper = (userId, shopper) => {
         }
     })
 }
-
-// Get the fiat payment object required for creating the job
+/**
+ * @function @name getJobCreationData
+ * @summary Get the fiat payment object required for creating the job
+ * @param {String} shopperId -- limepay shopper id
+ * @param {String} jobTitle -- Title of the job
+ * @param {number} jobPriceUsd -- Price of the job in USD
+ * @param {number} jobPriceCan -- Price of the job in CAN
+ * @param {String} jobIdHex -- hexId of the job
+ * @param {String} shopperAddress -- ethAddress of the shopper/client (limepay)
+ * @param {String} providerAddress -- ethAddress of the provider of the job
+ * @param {boolean} forClient -- Return transactions that can be signed by the shopper/client?
+ * @returns {object} Limepay fiat payment object, including signable transactions and everything necessary to process full job
+ */
 const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress, forClient = false) => {
     console.log('Params:', shopperId, jobTitle, jobPriceUsd, jobPriceCan, jobIdHex, shopperAddress, providerAddress)
     jobPriceCan = jobPriceCan * (10 ** 6)
@@ -391,6 +492,10 @@ var rightPad = function (string, chars, sign) {
 
 
 
+/**
+ * @function @name getGasPrice
+ * @returns {String} Gas price in gwei from specified gas station
+ */
 const getGasPrice = async () => {
     var price = await axios.get(CONFIG.GAS_STATION_URL)
     var parsedPrice = ethers.utils.parseUnits((price.data.fast / 10).toString(10), 'gwei')
