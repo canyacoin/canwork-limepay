@@ -41,19 +41,18 @@ app.get('/', async (req, res) => {
     try {
         const col = await firestore().listCollections()
         res.status(200).send(`connected:${col.length > 0}`).end()
-    } catch (e){
+    } catch (e) {
         console.log(e)
         res.status(500).send(JSON.stringify(e)).end()
     }
 })
-
 // Basic middleware check
 app.get('/auth/status', async (req, res) => {
     try {
         res.json({
             message: `You're logged in as ${res.locals.user.email} with Firebase UID: ${res.locals.user.uid}`
         })
-    } catch (e){
+    } catch (e) {
         res.json({
             message: `Not logged in`
         })
@@ -76,10 +75,15 @@ app.post('/auth/createShopper', async (req, res, next) => {
             useLimePayWallet: true
         }
         console.log('creating shopper...')
-        LimePay.shoppers.create(shopperData).then(async (shopper) => { 
-            if(shopper) {
-                await setShopper(res.locals.user.uid, { shopperId: shopper._id })  
-                res.json({...shopper, shopperId: shopper._id})
+        LimePay.shoppers.create(shopperData).then(async (shopper) => {
+            if (shopper) {
+                await setShopper(res.locals.user.uid, {
+                    shopperId: shopper._id
+                })
+                res.json({
+                    ...shopper,
+                    shopperId: shopper._id
+                })
             } else {
                 next('error. shopper null')
             }
@@ -127,27 +131,51 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
         const jobId = req.body.jobId
         const providerEthAddress = req.body.providerEthAddress
         const userId = res.locals.user.uid
-        if(!jobId || !providerEthAddress || !userId) next('Missing arguments')
+        if (!jobId || !providerEthAddress || !userId) next('Missing arguments')
         else {
             const job = await getJob(jobId)
             const shopper = await getShopper(userId)
             const jobValueCan = await getExchangeRate('DAI', job.budget)
-            const jobUpdated = await setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
+            const jobUpdated = await setJob({
+                ...job,
+                budgetCan: jobValueCan,
+                clientEthAddress: shopper.walletAddress,
+                providerEthAddress: providerEthAddress
+            })
             console.log('Job updated: ', jobUpdated)
-            const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, jobValueCan, 
+            const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, jobValueCan,
                 job.hexId, shopper.walletAddress, providerEthAddress)
             console.log('Job creation data: ', fiatPaymentData)
             const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
-            const clientTx = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
+            const clientTx = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan,
                 job.hexId, shopper.walletAddress, job.providerEthAddress, true)
-            res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken })
-        }        
+            res.json({
+                transactions: clientTx.genericTransactions,
+                paymentToken: createdPayment.limeToken,
+                createdPayment
+            })
+        }
     } catch (error) {
         console.log('ERR: ', JSON.stringify(error), error)
         next(error)
     }
 })
+
+
+app.get('/getStatus', async (req, res, next) => {
+    try {
+        const paymentId = req.body.paymentId
+        const status = await LimePay.fiatPayment.get(paymentId)
+        console.log(status)
+        res.json(status);
+    } catch(e) {
+        res.json(status);
+    }
+})
+
+
+
 
 
 
@@ -159,10 +187,10 @@ app.get('/auth/enter-escrow-tx', async (req, res) => {
         const jobId = req.param('jobId')
         const shopper = await getShopper(res.locals.user.uid)
         const job = await getJob(jobId)
-        const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
+        const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan,
             job.hexId, shopper.walletAddress, job.providerEthAddress, true)
         res.json(fiatPaymentData.genericTransactions)
-    } catch (e){
+    } catch (e) {
         res.json({
             message: `Not logged in`
         })
@@ -248,7 +276,9 @@ const setJob = (job) => {
     return new Promise((resolve, reject) => {
         try {
             const db = firestore()
-            db.collection('jobs').doc(job.id).set(job, {merge: true}).then(res => {
+            db.collection('jobs').doc(job.id).set(job, {
+                merge: true
+            }).then(res => {
                 resolve(res)
             }).catch(e => {
                 reject(e)
@@ -256,7 +286,7 @@ const setJob = (job) => {
         } catch (e) {
             reject(e)
         }
-    }) 
+    })
 }
 
 // Get the shopper object from firestore
@@ -271,7 +301,10 @@ const getShopper = (userId) => {
             } else {
                 const shopperId = doc.data().shopperId
                 const shopper = await LimePay.shoppers.get(shopperId)
-                resolve({ ...shopper, shopperId })
+                resolve({
+                    ...shopper,
+                    shopperId
+                })
             }
         } catch (e) {
             reject(e)
@@ -350,7 +383,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 abi: abi_canwork,
                 functionName: "createJob",
                 functionParams: forClient ? [jobIdHex, shopperAddress, providerAddress, jobPriceCan] : [{
-                        type: 'bytes',
+                        type: 'bytes32',
                         value: jobIdHex
                     },
                     {
@@ -382,7 +415,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
  */
 var rightPad = function (string, chars, sign) {
     var hasPrefix = /^0x/i.test(string) || typeof string === 'number';
-    string = string.toString(16).replace(/^0x/i,'');
+    string = string.toString(16).replace(/^0x/i, '');
 
     var padding = (chars - string.length + 1 >= 0) ? chars - string.length + 1 : 0;
 
