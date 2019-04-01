@@ -188,7 +188,7 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
             console.log('Signed payment: ', createdPayment)
             const clientTx = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
                 job.hexId, shopper.walletAddress, job.providerEthAddress, true)
-            res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken })
+            res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken, paymentId: createdPayment._id })
         }        
     } catch (error) {
         console.log('ERR: ', JSON.stringify(error), error)
@@ -219,6 +219,26 @@ app.get('/auth/enter-escrow-tx', async (req, res) => {
         res.json({
             message: `Not logged in`
         })
+    }
+})
+
+/**
+ * @name Get-Payment-Status
+ * @summary Gets the status of a limepay payment 
+ * @requires Firebase middleware authentication
+ * @param paymentId
+ * @returns the status of the payment
+ */
+app.get('/auth/get-payment-status', async (req, res) => {
+    try {
+        const paymentId = req.param('paymentId');
+        const payment = await LimePay.payments.get(paymentId);
+        
+        const transactions = populateGenericTXData(payment.genericTransactions);
+        res.json({ status: payment.status, transactions });
+    } catch (e) {
+        console.log('ERR: ', JSON.stringify(error), error)
+        next(error)
     }
 })
 
@@ -451,7 +471,7 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 abi: abi_canwork,
                 functionName: "createJob",
                 functionParams: forClient ? [jobIdHex, shopperAddress, providerAddress, jobPriceCan] : [{
-                        type: 'bytes',
+                        type: 'bytes32',
                         value: jobIdHex
                     },
                     {
@@ -500,4 +520,16 @@ const getGasPrice = async () => {
     var price = await axios.get(CONFIG.GAS_STATION_URL)
     var parsedPrice = ethers.utils.parseUnits((price.data.fast / 10).toString(10), 'gwei')
     return parsedPrice.toString()
+}
+
+/**
+ * @function @name populateGenericTXData
+ * @returns {Object}
+ */
+const populateGenericTXData = (genericTransactions) => {
+    let transactions = [];
+    genericTransactions.forEach((tx, index) => {
+        transactions[index] = { status: tx.status, transactionHash: tx.transactionHash };
+    })
+    return transactions;
 }
