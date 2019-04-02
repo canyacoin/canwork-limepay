@@ -536,7 +536,7 @@ const getJobCompletionData = async (shopperId, jobIdHex, forClient = false) => {
     const gasPriceWei = await getGasPrice()
     let gasPriceBN = ethers.utils.bigNumberify(gasPriceWei)
 
-    let jobCompletionLimit = 390000 // TODO
+    let jobCompletionLimit = 320000
     let jobCompletionGasLimitBN = ethers.utils.bigNumberify(jobCompletionLimit)
     let jobCompletionWeiAmount = gasPriceBN.mul(jobCompletionGasLimitBN).toString()
 
