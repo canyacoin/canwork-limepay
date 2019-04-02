@@ -211,16 +211,13 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
         if (!jobId || !userId) next('Missing arguments')
         else {
             const job = await getJob(jobId)
-            console.log("JOB", job);
             const shopper = await getShopper(userId)
-            // TODO
-            // const jobUpdated = await setJob({ ...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress })
-            // console.log('Job updated: ', jobUpdated)
-            
             const relayedPaymentData = await getJobCompletionData(shopper.shopperId, job.hexId)
-            console.log('Job creation data: ', relayedPaymentData)
+            console.log('Job Completion data: ', relayedPaymentData)
+            
             const createdPayment = await LimePay.relayedPayment.create(relayedPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
+            // TODO Should we update the job entry in the DB?
             
             const clientTx = await getJobCompletionData(shopper.shopperId, job.hexId, true);
             res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken, paymentId: createdPayment._id })
