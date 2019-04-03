@@ -167,7 +167,7 @@ app.get('/auth/getWalletToken', async (req, res, next) => {
  *  Sets IMPORTANT properties on the job object (budgetCan, client/provider eth address) 
  * @requires Firebase middleware authentication
  *  body: jobId / providerEthAddress
- * @returns Payment token && Transactions that will need to be signed by the shopper
+ * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
  */
 app.post('/auth/initFiatPayment', async (req, res, next) => {
     try {
@@ -196,7 +196,37 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
     }
 })
 
-
+/**
+ * @name InitRelayedPayment
+ * @summary Create and sign the relayed payment to mark a job as completed
+ * @description Initialises the relayed payment required to mark the job as completed. 
+ * @requires Firebase middleware authentication
+ *  body: jobId
+ * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
+ */
+app.post('/auth/initRelayedPayment', async (req, res, next) => {
+    try {
+        const jobId = req.body.jobId
+        const userId = res.locals.user.uid
+        if (!jobId || !userId) next('Missing arguments')
+        else {
+            const job = await getJob(jobId)
+            const shopper = await getShopper(userId)
+            const relayedPaymentData = await getJobCompletionData(shopper.shopperId, job.hexId)
+            console.log('Job Completion data: ', relayedPaymentData)
+            
+            const createdPayment = await LimePay.relayedPayment.create(relayedPaymentData, signerWalletConfig)
+            console.log('Signed payment: ', createdPayment)
+            // TODO Should we update the job entry in the DB?
+            
+            const clientTx = await getJobCompletionData(shopper.shopperId, job.hexId, true);
+            res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken, paymentId: createdPayment._id })
+        }
+    } catch (error) {
+        console.log('ERR: ', JSON.stringify(error), error)
+        next(error)
+    }
+})
 
 /* --------- GETTERS ------------ */
 
@@ -489,6 +519,43 @@ const getJobCreationData = async (shopperId, jobTitle, jobPriceUsd, jobPriceCan,
                 ]
             }
         ]
+    }
+}
+
+/**
+ * @function @name getJobCompletionData
+ * @summary Get the relayed payment object required for marking the job as completed job
+ * @param {String} shopperId -- limepay shopper id
+ * @param {String} jobIdHex -- hexId of the job
+ * @param {boolean} forClient -- Return transactions that can be signed by the shopper/client?
+ * @returns {object} Limepay relayed payment object, including signable transactions and everything necessary to process full job
+ */
+const getJobCompletionData = async (shopperId, jobIdHex, forClient = false) => {
+    console.log('Params:', shopperId, jobIdHex)
+    jobIdHex = rightPad(jobIdHex, 64)
+    const gasPriceWei = await getGasPrice()
+    let gasPriceBN = ethers.utils.bigNumberify(gasPriceWei)
+
+    let jobCompletionLimit = 320000
+    let jobCompletionGasLimitBN = ethers.utils.bigNumberify(jobCompletionLimit)
+    let jobCompletionWeiAmount = gasPriceBN.mul(jobCompletionGasLimitBN).toString()
+
+    return {
+        shopper: shopperId,
+        fundTxData: {
+            weiAmount: jobCompletionWeiAmount
+        },
+        genericTransactions: [{
+            gasPrice: gasPriceWei,
+            gasLimit: jobCompletionLimit,
+            to: CONFIG.CANWORK_ADDRESS,
+            abi: abi_canwork,
+            functionName: "completeJob",
+            functionParams: forClient ? [jobIdHex] : [{
+                type: 'bytes32',
+                value: jobIdHex
+            }]
+        }]
     }
 }
 
