@@ -1,23 +1,27 @@
 'use strict'
+
+/**
+ * @summary Initialize firebase
+ */
+require('./firebase-config');
+const FirestoreService = require('./firestore-service');
+const firestore = FirestoreService.firestore;
+
 const express = require('express'),
     axios = require('axios'),
     ethers = require('ethers'),
     cors = require('cors'),
     LimePaySDK = require('limepay'),
-    admin = require('firebase-admin'),
+    Monitor = require('./monitor'),
     firebaseMiddleware = require('express-firebase-middleware')
+
 let LimePay
-
-/**
- * @summary Development config (( Not for Prod ))
- */
-const sampleShopperWallet = require('./sample-shopper-wallet') // PASSWORD = sogfiuhsidoufhsdafofd
-
+let MonitorInstance;
+    
 /**
  * @summary Config
  */
 const CONFIG = require('./config')
-const serviceAccount = require('./firebasekey.json')
 
 /**
  * @summary Global variables
@@ -92,7 +96,7 @@ app.get('/auth/status', async (req, res) => {
  */
 app.post('/auth/createShopper', async (req, res, next) => {
     try {
-        const user = await getUser(res.locals.user.uid)
+        const user = await FirestoreService.getUser(res.locals.user.uid)
         var fullName = user.name.split(' '),
             shopperFirstName = fullName[0],
             shopperLastName = fullName[fullName.length - 1]
@@ -105,7 +109,7 @@ app.post('/auth/createShopper', async (req, res, next) => {
         console.log('creating shopper...')
         LimePay.shoppers.create(shopperData).then(async (shopper) => { 
             if(shopper) {
-                await setShopper(res.locals.user.uid, { shopperId: shopper._id })  
+                await FirestoreService.setShopper(res.locals.user.uid, { shopperId: shopper._id })  
                 res.json({...shopper, shopperId: shopper._id})
             } else {
                 next('error. shopper null')
@@ -127,7 +131,7 @@ app.post('/auth/createShopper', async (req, res, next) => {
  */
 app.get('/auth/getShopper', async (req, res, next) => {
     try {
-        const shopper = await getShopper(res.locals.user.uid)
+        const shopper = await FirestoreService.getShopper(res.locals.user.uid)
         res.json(shopper)
     } catch (error) {
         next(error)
@@ -146,7 +150,7 @@ app.get('/auth/getShopper', async (req, res, next) => {
  */
 app.get('/auth/getWalletToken', async (req, res, next) => {
     try {
-        const shopper = await getShopper(res.locals.user.uid)
+        const shopper = await FirestoreService.getShopper(res.locals.user.uid)
         console.log('getWalletToken: ', shopper)
         const token = await LimePay.shoppers.getWalletToken(shopper.shopperId) // returns new Promise<>
         console.log('getWalletToken: ', token)
@@ -176,10 +180,10 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
         const userId = res.locals.user.uid
         if(!jobId || !providerEthAddress || !userId) next('Missing arguments')
         else {
-            const job = await getJob(jobId)
-            const shopper = await getShopper(userId)
+            const job = await FirestoreService.getJob(jobId)
+            const shopper = await FirestoreService.getShopper(userId)
             const jobValueCan = await getExchangeRate('DAI', job.budget)
-            const jobUpdated = await setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
+            const jobUpdated = await FirestoreService.setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
             console.log('Job updated: ', jobUpdated)
             const fiatPaymentData = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, jobValueCan, 
                 job.hexId, shopper.walletAddress, providerEthAddress)
@@ -210,14 +214,13 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
         const userId = res.locals.user.uid
         if (!jobId || !userId) next('Missing arguments')
         else {
-            const job = await getJob(jobId)
-            const shopper = await getShopper(userId)
+            const job = await FirestoreService.getJob(jobId)
+            const shopper = await FirestoreService.getShopper(userId)
             const relayedPaymentData = await getJobCompletionData(shopper.shopperId, job.hexId)
             console.log('Job Completion data: ', relayedPaymentData)
             
             const createdPayment = await LimePay.relayedPayment.create(relayedPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
-            // TODO Should we update the job entry in the DB?
             
             const clientTx = await getJobCompletionData(shopper.shopperId, job.hexId, true);
             res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken, paymentId: createdPayment._id })
@@ -227,6 +230,42 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
         next(error)
     }
 })
+
+/* --------- Monitoring ------------ */
+
+/**
+ * @name Monitor
+ * @summary Create and sign the relayed payment to mark a job as completed
+ * @description Initialises the relayed payment required to mark the job as completed.
+ * @requires Firebase middleware authentication
+ *  body: jobId
+ * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
+ */
+
+app.put('/monitor', async (req, res, next) => {
+    try {
+        const paymentId = req.param('paymentId');
+        const jobId = req.param('jobId');
+
+        if (!paymentId || jobId) next('Missing arguments');
+        else {
+            // const paymentInDb = await FirestoreService.getPayment(paymentId);
+            // if (paymentInDb) {
+            //     console.log(`Payment with id ${paymentId} was already send for monitoring`);
+            // } else {
+            //     // Get the payment from LimePay //TODO try/catch
+            //     const payment = await LimePay.payments.get(paymentId);
+
+            // }
+
+            //MonitorInstance.monitor(paymentId);
+        }
+
+        res.json({});
+    } catch (error) {
+
+    }
+});
 
 /* --------- GETTERS ------------ */
 
@@ -287,23 +326,12 @@ app.listen(PORT, async () => {
         apiKey: CONFIG.API_KEY,
         secret: CONFIG.API_SECRET
     })
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    })
+    
+    MonitorInstance = new Monitor(LimePay);
     console.log(`Sample app listening at http://localhost:` + PORT)
 })
 
-
-
-
-
 /* ----------------- UTILS / HELPERS -----------------*/
-
-/**
- * @function @name firestore
- * @returns Admin firestore used to read and write data
- */
-const firestore = () => admin.firestore()
 
 /**
  * @function @name getExchangeRate
@@ -322,120 +350,6 @@ const getExchangeRate = async (fromCur, amount) => {
     }
 }
 
-/**
- * @function @name getJob
- * @summary Get job from firestore based on ID
- * @param jobId -- string
- */
-const getJob = (jobId) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = firestore()
-            var jobRef = db.collection('jobs').doc(jobId)
-            jobRef.get().then(doc => {
-                if (!doc.exists) {
-                    reject('No such document!')
-                } else {
-                    resolve(doc.data())
-                }
-            })
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-/**
- * @function @name setJob
- * @summary Update the job object in firestore
- * @param job -- updated job object
- */
-const setJob = (job) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = firestore()
-            db.collection('jobs').doc(job.id).set(job, {merge: true}).then(res => {
-                resolve(res)
-            }).catch(e => {
-                reject(e)
-            })
-        } catch (e) {
-            reject(e)
-        }
-    }) 
-}
-
-/**
- * @function @name getUser
- * @summary Get user from firestore based on ID
- * @param userId -- string
- */
-const getUser = (userId) => {
-    console.log(userId)
-    return new Promise((resolve, reject) => {
-        try {
-            const db = firestore()
-            var userRef = db.collection('users').doc(userId)
-            userRef.get().then(doc => {
-                if (!doc.exists) {
-                    reject('No such document!')
-                } else {
-                    resolve(doc.data())
-                }
-            })
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-/**
- * @function @name getShopper
- * @summary Gets the Limepay shopper object using the specified userId
- * @param userId -- string
- * @returns ShopperID ++ limepay shopper object
- */
-const getShopper = (userId) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = firestore()
-            var shopperRef = db.collection('shoppers').doc(userId)
-            const doc = await shopperRef.get();
-            if (!doc.exists) {
-                resolve(null)
-            } else {
-                const shopperId = doc.data().shopperId
-                const shopper = await LimePay.shoppers.get(shopperId)
-                resolve({ ...shopper, shopperId })
-            }
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-/**
- * @function @name SetShopper
- * @summary Sets the limepay shopper ID in firestore so we know who has an existing acc
- * @param {String} userId -- string
- * @param {object} shopper -- object ((shopperId))
- */
-const setShopper = (userId, shopper) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = firestore()
-            db.collection('shoppers').doc(userId).set(shopper, {
-                merge: true
-            }).then(res => {
-                resolve(res)
-            }).catch(e => {
-                reject(e)
-            })
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
 /**
  * @function @name getJobCreationData
  * @summary Get the fiat payment object required for creating the job
