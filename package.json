@@ -27,6 +27,7 @@
     "express-firebase-middleware": "^2.0.0",
     "firebase-admin": "^7.0.0",
     "limepay": "^0.1.3",
+    "moment": "^2.24.0",
     "node-schedule": "^1.3.2"
   },
   "devDependencies": {

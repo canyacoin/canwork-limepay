@@ -26,6 +26,7 @@ const CONFIG = require('./config')
 /**
  * @summary Global variables
  */
+const PAYMENT_TYPES = require('./constants.json').PAYMENT_TYPES;
 const signerWallet = require('./signer-wallet')
 const abi_canwork = require('./abi/canwork.json')
 const abi_canyacoin = require('./abi/canyacoin.json')
@@ -191,7 +192,7 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
             const createdPayment = await LimePay.fiatPayment.create(fiatPaymentData, signerWalletConfig)
             console.log('Signed payment: ', createdPayment)
             const clientTx = await getJobCreationData(shopper.shopperId, job.information.title, job.budget, job.budgetCan, 
-                job.hexId, shopper.walletAddress, job.providerEthAddress, true)
+                job.hexId, shopper.walletAddress, providerEthAddress, true)
             res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken, paymentId: createdPayment._id })
         }        
     } catch (error) {
@@ -242,7 +243,7 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
  * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
  */
 
-app.put('/auth/monitor', async (req, res, next) => {
+app.put('/monitor', async (req, res, next) => {
     try {
         const paymentId = req.param('paymentId');
         const jobId = req.param('jobId');
@@ -253,7 +254,7 @@ app.put('/auth/monitor', async (req, res, next) => {
             const job = await FirestoreService.getJob(jobId);
             if (!job.fiatPayment) {
                 console.log(`Cannot monitor payment with id ${paymentId} for job with id ${jobId} that is not using LimePay`);
-                res.json({message: 'Cannot monitor the payment, because the Job was not paid with LimePay'})
+                res.json({ message: 'Cannot monitor the payment, because the Job was not paid with LimePay' }).end();
             }
 
             // Get the Payment and check whether we are already monitoring it
@@ -262,7 +263,7 @@ app.put('/auth/monitor', async (req, res, next) => {
                 console.log(`Payment with id ${paymentId} was already send for monitoring`);
             } else {
                 // Add the new payment in firestore
-                const payment = { id: paymentId, jobId: jobId };
+                const payment = { id: paymentId, jobId: jobId, type: getPaymentType(job.state)};
                 await FirestoreService.setPayment(payment);
 
                 MonitorInstance.monitor(paymentId);
@@ -341,6 +342,22 @@ app.listen(PORT, async () => {
 })
 
 /* ----------------- UTILS / HELPERS -----------------*/
+
+/**
+ * @function @name getPaymentType
+ * @summary Gets the type of the LimePay payment whether it is for Job Creation or Job Completion
+ * @param state the state of the Job 
+ * @returns returns `JOB_CREATION` or `JOB_COMPLETION` whether the payment is for creating of completing a job
+ */
+const getPaymentType = function (state) {
+    if (state == 'Pending completion') {
+        return PAYMENT_TYPES.JOB_COMPLETION;
+    } else if (state == 'Awaiting Escrow') {
+        return PAYMENT_TYPES.JOB_CREATION;
+    }
+
+    throw 'Invalid job state';
+}
 
 /**
  * @function @name getExchangeRate

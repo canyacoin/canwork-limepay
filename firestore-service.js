@@ -38,7 +38,7 @@ const getPayment = (paymentId) => {
     return new Promise((resolve, reject) => {
         try {
             const db = firestore();
-            var paymentRef = db.collection('payments').doc(paymentId)
+            var paymentRef = db.collection('limepay-payments').doc(paymentId)
             paymentRef.get().then(doc => {
                 if (!doc.exists) {
                     resolve(null);
@@ -61,7 +61,7 @@ const setPayment = (payment) => {
     return new Promise((resolve, reject) => {
         try {
             const db = firestore()
-            db.collection('payments').doc(payment.id).set(payment, { merge: true }).then(res => {
+            db.collection('limepay-payments').doc(payment.id).set(payment, { merge: true }).then(res => {
                 resolve(res)
             }).catch(e => {
                 reject(e)
