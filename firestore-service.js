@@ -37,6 +37,7 @@ const getJob = (jobId) => {
 const getPayment = (paymentId) => {
     return new Promise((resolve, reject) => {
         try {
+            const db = firestore();
             var paymentRef = db.collection('payments').doc(paymentId)
             paymentRef.get().then(doc => {
                 if (!doc.exists) {
@@ -44,6 +45,26 @@ const getPayment = (paymentId) => {
                 } else {
                     resolve(doc.data())
                 }
+            })
+        } catch (e) {
+            reject(e)
+        }
+    })
+}
+
+/**
+ * @function @name setPayment
+ * @summary Update the payment object in firestore
+ * @param payment -- updated payment object
+ */
+const setPayment = (payment) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const db = firestore()
+            db.collection('payments').doc(payment.id).set(payment, { merge: true }).then(res => {
+                resolve(res)
+            }).catch(e => {
+                reject(e)
             })
         } catch (e) {
             reject(e)
@@ -96,31 +117,6 @@ const getUser = (userId) => {
 }
 
 /**
- * @function @name getShopper
- * @summary Gets the Limepay shopper object using the specified userId
- * @param userId -- string
- * @returns ShopperID ++ limepay shopper object
- */
-const getShopper = (userId) => {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = firestore()
-            var shopperRef = db.collection('shoppers').doc(userId)
-            const doc = await shopperRef.get();
-            if (!doc.exists) {
-                resolve(null)
-            } else {
-                const shopperId = doc.data().shopperId
-                const shopper = await LimePay.shoppers.get(shopperId)
-                resolve({ ...shopper, shopperId })
-            }
-        } catch (e) {
-            reject(e)
-        }
-    })
-}
-
-/**
  * @function @name SetShopper
  * @summary Sets the limepay shopper ID in firestore so we know who has an existing acc
  * @param {String} userId -- string
@@ -147,8 +143,8 @@ module.exports = {
     getJob,
     getPayment,
     setJob,
+    setPayment,
     getUser,
-    getShopper,
     setShopper,
     firestore
 }

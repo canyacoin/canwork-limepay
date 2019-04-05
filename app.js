@@ -131,7 +131,7 @@ app.post('/auth/createShopper', async (req, res, next) => {
  */
 app.get('/auth/getShopper', async (req, res, next) => {
     try {
-        const shopper = await FirestoreService.getShopper(res.locals.user.uid)
+        const shopper = await getShopper(res.locals.user.uid)
         res.json(shopper)
     } catch (error) {
         next(error)
@@ -150,7 +150,7 @@ app.get('/auth/getShopper', async (req, res, next) => {
  */
 app.get('/auth/getWalletToken', async (req, res, next) => {
     try {
-        const shopper = await FirestoreService.getShopper(res.locals.user.uid)
+        const shopper = await getShopper(res.locals.user.uid)
         console.log('getWalletToken: ', shopper)
         const token = await LimePay.shoppers.getWalletToken(shopper.shopperId) // returns new Promise<>
         console.log('getWalletToken: ', token)
@@ -181,7 +181,7 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
         if(!jobId || !providerEthAddress || !userId) next('Missing arguments')
         else {
             const job = await FirestoreService.getJob(jobId)
-            const shopper = await FirestoreService.getShopper(userId)
+            const shopper = await getShopper(userId)
             const jobValueCan = await getExchangeRate('DAI', job.budget)
             const jobUpdated = await FirestoreService.setJob({...job, budgetCan: jobValueCan, clientEthAddress: shopper.walletAddress, providerEthAddress: providerEthAddress})
             console.log('Job updated: ', jobUpdated)
@@ -215,7 +215,7 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
         if (!jobId || !userId) next('Missing arguments')
         else {
             const job = await FirestoreService.getJob(jobId)
-            const shopper = await FirestoreService.getShopper(userId)
+            const shopper = await getShopper(userId)
             const relayedPaymentData = await getJobCompletionData(shopper.shopperId, job.hexId)
             console.log('Job Completion data: ', relayedPaymentData)
             
@@ -242,28 +242,37 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
  * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
  */
 
-app.put('/monitor', async (req, res, next) => {
+app.put('/auth/monitor', async (req, res, next) => {
     try {
         const paymentId = req.param('paymentId');
         const jobId = req.param('jobId');
 
-        if (!paymentId || jobId) next('Missing arguments');
+        if (!paymentId || !jobId) next('Missing arguments');
         else {
-            // const paymentInDb = await FirestoreService.getPayment(paymentId);
-            // if (paymentInDb) {
-            //     console.log(`Payment with id ${paymentId} was already send for monitoring`);
-            // } else {
-            //     // Get the payment from LimePay //TODO try/catch
-            //     const payment = await LimePay.payments.get(paymentId);
+            // Check whether the Job is paid with LimePay
+            const job = await FirestoreService.getJob(jobId);
+            if (!job.fiatPayment) {
+                console.log(`Cannot monitor payment with id ${paymentId} for job with id ${jobId} that is not using LimePay`);
+                res.json({message: 'Cannot monitor the payment, because the Job was not paid with LimePay'})
+            }
 
-            // }
+            // Get the Payment and check whether we are already monitoring it
+            const paymentInDb = await FirestoreService.getPayment(paymentId);
+            if (paymentInDb) {
+                console.log(`Payment with id ${paymentId} was already send for monitoring`);
+            } else {
+                // Add the new payment in firestore
+                const payment = { id: paymentId, jobId: jobId };
+                await FirestoreService.setPayment(payment);
 
-            //MonitorInstance.monitor(paymentId);
+                MonitorInstance.monitor(paymentId);
+            }
         }
 
         res.json({});
     } catch (error) {
-
+        console.log('ERR: ', JSON.stringify(error), error)
+        next(error)
     }
 });
 
@@ -348,6 +357,32 @@ const getExchangeRate = async (fromCur, amount) => {
     } catch (e) {
         return Promise.reject(e)
     }
+}
+
+
+/**
+ * @function @name getShopper
+ * @summary Gets the Limepay shopper object using the specified userId
+ * @param userId -- string
+ * @returns ShopperID ++ limepay shopper object
+ */
+const getShopper = (userId) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const db = firestore()
+            var shopperRef = db.collection('shoppers').doc(userId)
+            const doc = await shopperRef.get();
+            if (!doc.exists) {
+                resolve(null)
+            } else {
+                const shopperId = doc.data().shopperId
+                const shopper = await LimePay.shoppers.get(shopperId)
+                resolve({ ...shopper, shopperId })
+            }
+        } catch (e) {
+            reject(e)
+        }
+    })
 }
 
 /**
