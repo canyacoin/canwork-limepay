@@ -232,7 +232,7 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
  * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
  */
 
-app.put('/auth/monitor', async (req, res, next) => {
+app.get('/auth/monitor', async (req, res, next) => {
     try {
         const paymentId = req.param('paymentId');
         const jobId = req.param('jobId');
