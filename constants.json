@@ -1,0 +1,12 @@
+{
+    "PAYMENT_STATUSES" : {
+        "NEW" : "NEW",
+        "PROCESSING": "PROCESSING",
+        "SUCCESSFUL": "SUCCESSFUL",
+        "FAILED": "FAILED"
+    },
+    "PAYMENT_TYPES" : {
+        "JOB_CREATION" : "JOB_CREATION",
+        "JOB_COMPLETION" : "JOB_COMPLETION"
+    }
+}
