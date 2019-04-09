@@ -1,4 +1,10 @@
 {
+    "TRANSACTION_STATUSES" : {
+        "PENDING" : "PENDING",
+        "PROCESSING" : "PROCESSING",
+        "SUCCESSFUL" : "SUCCESSFUL",
+        "FAILED" : "FAILED"
+    },
     "PAYMENT_STATUSES" : {
         "NEW" : "NEW",
         "PROCESSING": "PROCESSING",
