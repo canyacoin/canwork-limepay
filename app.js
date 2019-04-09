@@ -255,6 +255,10 @@ app.get('/auth/monitor', async (req, res, next) => {
                 const payment = { id: paymentId, jobId: jobId, type: getPaymentType(job.state)};
                 await FirestoreService.setPayment(payment);
 
+                // Update the state of the Job
+                await updateJobState(job, payment.type);
+
+                // Trigger the monitoring of the LimePay payment
                 MonitorInstance.monitor(paymentId);
             }
         }
@@ -562,4 +566,23 @@ const populateGenericTXData = (genericTransactions) => {
         transactions[index] = { status: tx.status, transactionHash: tx.transactionHash };
     })
     return transactions;
+}
+
+/**
+ * @function @name updateJobState
+ * @param {Object} job 
+ * @param {String} paymentType
+ * @description updates the state of the job to indicate that a payment is in process. Depending on the payment types, two types of states are used.
+ * if the type is JOB_CREATION the state is Processing Escrow. If the type is JOB_COMPLETION the state is Finishing Job 
+ */
+const updateJobState = async (job, paymentType) => {
+    if (paymentType == PAYMENT_TYPES.JOB_COMPLETION) {
+        job.state = 'Processing Escrow';
+    } else if (paymentType == PAYMENT_TYPES.JOB_CREATION) {
+        job.state = 'Finishing Job';
+    } else {
+        throw 'Invalid payment type';
+    }
+
+    await FirestoreService.setJob(job);
 }
