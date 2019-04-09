@@ -48,11 +48,6 @@ app.use(cors({
     origin: ['http://localhost:4200', 'https://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
 }))
 app.use('/auth/', firebaseMiddleware.auth)
-app.use((err, req, res, next) => {
-    console.log('ERR: ', JSON.stringify(err), err)
-    res.status(500).send(err)
-})
-
 /**
  * @name / - Firestore connection checker
  * @summary Checks connection to firestore by reading collections and returning length 
@@ -191,7 +186,6 @@ app.post('/auth/initFiatPayment', async (req, res, next) => {
             res.json({ transactions: clientTx.genericTransactions, paymentToken: createdPayment.limeToken, paymentId: createdPayment._id })
         }        
     } catch (error) {
-        console.log('ERR: ', JSON.stringify(error), error)
         next(error)
     }
 })
@@ -238,7 +232,7 @@ app.post('/auth/initRelayedPayment', async (req, res, next) => {
  * @returns Payment token, Payment ID and Transactions that will need to be signed by the shopper
  */
 
-app.put('/auth/monitor', async (req, res, next) => {
+app.get('/auth/monitor', async (req, res, next) => {
     try {
         const paymentId = req.param('paymentId');
         const jobId = req.param('jobId');
@@ -316,6 +310,10 @@ app.get('/auth/get-payment-status', async (req, res) => {
     }
 })
 
+app.use((err, req, res, next) => {
+    console.log('ERR: ', err);
+    res.status(500).send(err);
+})
 
 
 /* ---------- EXPRESS INIT --------------*/
