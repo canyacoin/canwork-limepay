@@ -45,7 +45,7 @@ const signerWalletConfig = {
 const app = express()
 app.use(express.json())
 app.use(cors({
-    origin: ['http://localhost:4200', 'https://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io']
+    origin: ['http://localhost:4200', 'https://localhost:4200', `https://staging-can-work.firebaseapp.com`, 'https://canwork.io', `https://staging.canya.com`]
 }))
 app.use('/auth/', firebaseMiddleware.auth)
 /**
