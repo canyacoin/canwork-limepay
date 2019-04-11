@@ -120,7 +120,7 @@ app.post('/auth/createShopper', async (req, res, next) => {
  * @requires Firebase middleware authentication 
  * @returns Shopper object, or null if it doesn't exist
  */
-app.get('/auth/getShopper', async (req, res, next) => {
+app.get('/getShopper', async (req, res, next) => {
     try {
         const shopper = await getShopper(res.locals.user.uid)
         res.json(shopper)
