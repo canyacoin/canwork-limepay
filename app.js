@@ -27,15 +27,9 @@ const CONFIG = require('./config')
  * @summary Global variables
  */
 const PAYMENT_TYPES = require('./constants.json').PAYMENT_TYPES;
-const signerWallet = require('./signer-wallet')
 const abi_canwork = require('./abi/canwork.json')
 const abi_canyacoin = require('./abi/canyacoin.json')
-const signerWalletConfig = {
-    encryptedWallet: {
-        jsonWallet: JSON.stringify(signerWallet),
-        password: CONFIG.SIGNER_WALLET_PASSPHRASE
-    }
-}
+const signerWalletConfig = { privateKey: CONFIG.SIGNER_WALLET_KEY };
 
 /**
  * @summary Express configuration and setup
